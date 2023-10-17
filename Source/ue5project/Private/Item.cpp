@@ -5,11 +5,13 @@
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/ItemInfoComponent.h"
+#include "Components/InventoryComponent.h"
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
 #include "Interfaces/PickupInterface.h"
 #include "Kismet/GameplayStatics.h"
 #include "Characters/PlayerCharacter.h"
+
 
 AItem::AItem()
 {
@@ -18,28 +20,89 @@ AItem::AItem()
 	ItemMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ItemMeshComponent"));
 	RootComponent = ItemMesh;
 
-	ItemMesh->SetCollisionResponseToAllChannels(ECollisionResponse::ECR_Ignore);
-	ItemMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	//ItemMesh->SetCollisionResponseToAllChannels(ECollisionResponse::ECR_Ignore);
+	//ItemMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
 	Sphere = CreateDefaultSubobject<USphereComponent>(TEXT("Sphere"));
 	Sphere->SetupAttachment(GetRootComponent());
 
 	ItemEffect = CreateDefaultSubobject<UNiagaraComponent>(TEXT("Embers"));
 	ItemEffect->SetupAttachment(GetRootComponent());
-
-	ItemInfoComp = CreateDefaultSubobject<UItemInfoComponent>(TEXT("ItemInfo"));
 	
 	bReplicates = true;
+
+	bIsCopy = false;
+	bIsPickup = false;
+}
+
+void AItem::ResetItemFlags()
+{
+	bIsCopy = false;
+	bIsPickup = false;
+}
+
+AItem* AItem::CreateItemCopy()
+{
+	AItem* ItemCopy = NewObject<AItem>(StaticClass());
+
+	ItemCopy->ItemData.ID = this->ItemData.ID;
+	ItemCopy->ItemQuantity = this->ItemQuantity;
+	ItemCopy->ItemData.ItemQuality = this->ItemData.ItemQuality;
+	ItemCopy->ItemData.ItemType = this->ItemData.ItemType;
+	ItemCopy->ItemData.TextData = this->ItemData.TextData;
+	ItemCopy->ItemData.NumericData = this->ItemData.NumericData;
+	ItemCopy->ItemData.ItemStatistics = this->ItemData.ItemStatistics;
+	ItemCopy->ItemData.AssetData = this->ItemData.AssetData;
+	ItemCopy->bIsCopy = true;
+
+	return ItemCopy;
+}
+
+void AItem::SetQuantity(const int32 NewQuantity)
+{
+	if (NewQuantity != ItemQuantity)
+	{
+		ItemQuantity = FMath::Clamp(NewQuantity, 0,
+			this->ItemData.NumericData.bIsStackable ? this->ItemData.NumericData.MaxStackSize : 1);
+
+		if (this->OwningInventory)
+		{
+			if (this->ItemQuantity <= 0)
+			{
+				this->OwningInventory->RemoveSingleInstanceOfItem(this);
+			}
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("ItemBase OwningInventory was null"));
+		}
+	}
 }
 
 void AItem::BeginPlay()
 {
 	Super::BeginPlay();
 
-
 	Sphere->OnComponentBeginOverlap.AddDynamic(this, &AItem::OnSphereOverlap);
 	Sphere->OnComponentEndOverlap.AddDynamic(this, &AItem::OnSphereEndOverlap);
 	
+	InteractableData = InstanceInteractableData;
+}
+
+void AItem::BeginFocus()
+{
+}
+
+void AItem::EndFocus()
+{
+}
+
+void AItem::BeginInteract()
+{
+}
+
+void AItem::EndInteract()
+{
 }
 
 float AItem::TransformedSin()
@@ -104,18 +167,5 @@ void AItem::Tick(float DeltaTime)
 	{
 		AddActorWorldOffset(FVector(0.f, 0.f, TransformedSin()));
 	}
-}
-
-void AItem::Interact(class APlayerCharacter* Character)
-{
-	if (HasAuthority() && Character)
-	{
-		Character->AddInventoryItem(ItemInfoComp->GetItemData());
-		Destroy();
-	}
-}
-
-void AItem::Use(APlayerCharacter* Character)
-{
 }
 

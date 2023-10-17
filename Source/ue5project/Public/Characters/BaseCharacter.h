@@ -19,40 +19,36 @@ class UE5PROJECT_API ABaseCharacter : public ACharacter, public IHitInterface
 
 public:
 	ABaseCharacter();
+
+	// AActor
 	virtual void Tick(float DeltaTime) override;
 
 protected:
+
+	// AActor
 	virtual void BeginPlay() override;
 	
+	// HitInterface
 	virtual void GetHit_Implementation(const FVector& ImpactPoint, AActor* Hitter) override;
+
+	// Attack
 	virtual void Attack();
 	virtual bool CanAttack();
 	virtual void HandleDamage(float DamageAmount);
 
+	UFUNCTION(BlueprintCallable)
+	virtual void AttackEnd();
+
+	// Hit Reaction
 	void DirectionalHitReact(const FVector& ImpactPoint);
 	void PlayHitSound(const FVector& ImpactPoint);
 	void SpawnHitParticles(const FVector& ImpactPoint);
 	void DisableMeshCollision();
 	void DisableCapsule();	
 	bool IsAlive();
-
-	void PlayHitReactMontage(const FName& SectionName);
-	virtual int32 PlayAttackMontage();
-	virtual int32 PlayDeathMontage();
-	virtual void PlayDodgeMontage();
-	void StopAttackMontage();
-	
+	 
 	UFUNCTION(BlueprintNativeEvent)
-	void Die();
-
-	UFUNCTION(BlueprintCallable)
-	FVector GetTranslationWarpTarget();
-
-	UFUNCTION(BlueprintCallable)
-	FVector GetRotationWarpTarget();
-
-	UFUNCTION(BlueprintCallable)
-	virtual void AttackEnd();
+	void Die();	
 
 	UFUNCTION(BlueprintCallable)
 	virtual void DodgeEnd();
@@ -60,31 +56,43 @@ protected:
 	UFUNCTION(BlueprintCallable)
 	void SetWeaponCollisionEnabled(ECollisionEnabled::Type CollisionEnabled);
 
-	UPROPERTY(VisibleAnywhere, Category = Weapon)
-	AWeapon* EquippedWeapon;
-
+	// Components
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	UAttributeComponent* Attributes;
 
-	UPROPERTY(BlueprintReadOnly, Category = Combat)
-	AActor* CombatTarget;
+	// Montage
+	void PlayHitReactMontage(const FName& SectionName);
+	virtual int32 PlayAttackMontage();
+	virtual int32 PlayDeathMontage();
+	virtual void PlayDodgeMontage();
+	void StopAttackMontage();
+
+	// MotionWarping
+	UFUNCTION(BlueprintCallable)
+	FVector GetTranslationWarpTarget();
+
+	UFUNCTION(BlueprintCallable)
+	FVector GetRotationWarpTarget();
 
 	UPROPERTY(EditAnywhere, Category = Combat)
 	double WarpTargetDistance = 75.f;
+
+protected:
+
+	UPROPERTY(VisibleAnywhere, Category = Weapon)
+	AWeapon* EquippedWeapon;
+
+	UPROPERTY(BlueprintReadOnly, Category = Combat)
+	AActor* CombatTarget;
 
 	UPROPERTY(BlueprintReadOnly)
 	TEnumAsByte<EDeathPose> DeathPose;
 
 private:
 
+	// Montage
 	void PlayMontageSection(UAnimMontage* Montage, const FName& SectionName);
 	int32 PlayRandomMontageSection(UAnimMontage* Montage, const TArray<FName>& SectionNames);
-
-	UPROPERTY(EditAnywhere, Category = Combat)
-	USoundBase* HitSound;
-
-	UPROPERTY(EditAnywhere, Category = Combat)
-	UParticleSystem* HitParticles;
 
 	UPROPERTY(EditDefaultsOnly, Category = Combat)
 	UAnimMontage* AttackMontage;
@@ -103,6 +111,14 @@ private:
 
 	UPROPERTY(EditAnywhere, Category = Combat)
 	TArray<FName> DeathMontageSections;
+
+	// Sound
+	UPROPERTY(EditAnywhere, Category = Combat)
+	USoundBase* HitSound;
+
+	// Particle
+	UPROPERTY(EditAnywhere, Category = Combat)
+	UParticleSystem* HitParticles;
 
 public:
 

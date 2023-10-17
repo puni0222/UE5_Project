@@ -63,27 +63,30 @@ void ABaseCharacter::PlayHitReactMontage(const FName& SectionName)
 void ABaseCharacter::DirectionalHitReact(const FVector& ImpactPoint)
 {
 	const FVector Forward = GetActorForwardVector();
-	// Lower Impact Point to the Enemy's Actor Location Z
+	// ImpactPoint의 Z좌표를 캐릭터의 Z좌표와 동일하게 만든다.
 	const FVector ImpactLowered(ImpactPoint.X, ImpactPoint.Y, GetActorLocation().Z);
+	// 충돌 지점과 캐릭터의 현재 위치 간의 방향 벡터를 계산한다.
 	const FVector ToHit = (ImpactLowered - GetActorLocation()).GetSafeNormal();
 
 	// Forward * ToHit = |Forward||ToHit| * cos(theta)
-	// |Forward| = 1, |ToHit| = 1, so Forward * ToHit = cos(theta)
+	// |Forward|,|ToHit|가 단위벡터이므로, Forward * ToHit = cos(theta)
+	// 내적을 이용해서 CosTheta값을 계산한다.
 	const double CosTheta = FVector::DotProduct(Forward, ToHit);
-	// Take the inverse cosine (arc-cosine) of cos(theta) to get theta
+	// CosTheta 의 역코사인을 계산하여 Theta를 얻는다.
 	double Theta = FMath::Acos(CosTheta);
-	// convert from radians to degrees
+	// radian에서 degree로 변환
 	Theta = FMath::RadiansToDegrees(Theta);
 
-	// if CrossProduct points down, Theta should be negative
+	// 외적을 계산한다.
 	const FVector CrossProduct = FVector::CrossProduct(Forward, ToHit);
+	// 외적의 Z가 아래 방향을 가르킨다면
 	if (CrossProduct.Z < 0)
 	{
+		// Theta를 양의 각도로 반전.
 		Theta *= -1.f;
 	}
 
 	FName Section("FromBack");
-
 	if (Theta >= -45.f && Theta < 45.f)
 	{
 		Section = FName("FromFront");

@@ -22,7 +22,6 @@ protected:
 
 private:
 	
-	// Current Health
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Actor Attributes", meta = (AllowPrivateAccess = "true"))
 	float Health;
 
@@ -64,7 +63,6 @@ public:
 	void AddSouls(int32 NumberOfSouls);
 	void AddGold(int32 AmountOfGold);
 	void AddXp(float AmountOfXp);
-
 	void AddHealth(float Value);
 	void AddStamina(float Value);
 

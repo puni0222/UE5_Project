@@ -16,6 +16,8 @@ class UE5PROJECT_API AWeapon : public AItem
 	GENERATED_BODY()
 public:
 	AWeapon();
+
+	// Equip
 	void Equip(USceneComponent* InParent, FName InSocketName, AActor* NewOwner, APawn* NewInstigator);
 	void DeactivateEmbers();
 	void DisableSphereColilsion();
@@ -27,6 +29,7 @@ public:
 protected:
 	virtual void BeginPlay() override;
 
+	// Hit
 	UFUNCTION()
 	void OnBoxOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 
@@ -39,17 +42,24 @@ protected:
 
 private:
 	
-	void BoxTrace(FHitResult& BoxHit);
+	// Damage
+	UPROPERTY(EditAnywhere, Category = "Weapon Properties")
+	float Damage = 20.f;
 
+	// BoxTrace
+	void BoxTrace(FHitResult& BoxHit);
+	
 	UPROPERTY(EditAnywhere, Category = "Weapon Properties")
 	FVector BoxTarceExtent = FVector(5.f);
 
 	UPROPERTY(EditAnywhere, Category = "Weapon Properties")
 	bool bShowBoxDebug = false;
 
+	// Sound
 	UPROPERTY(EditAnywhere, Category = "Weapon Properties")
 	USoundBase* EquipSound;
 	
+	// Components
 	UPROPERTY(VisibleAnywhere, Category = "Weapon Properties")
 	UBoxComponent* WeaponBox;
 	
@@ -58,9 +68,6 @@ private:
 	
 	UPROPERTY(VisibleAnywhere)
 	USceneComponent* BoxTraceEnd;
-
-	UPROPERTY(EditAnywhere, Category = "Weapon Properties")
-	float Damage = 20.f;
 	
 public:
 	FORCEINLINE UBoxComponent* GetWeaponBox() const { return WeaponBox; }

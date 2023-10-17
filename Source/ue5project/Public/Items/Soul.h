@@ -30,6 +30,7 @@ private:
 
 	UPROPERTY(EditAnywhere)
 	float DriftRate = -15.f;
+
 public:
 	FORCEINLINE int32 GetSouls() const { return Souls; }
 	FORCEINLINE void SetSouls(int32 NumberOfSouls) { Souls = NumberOfSouls; }

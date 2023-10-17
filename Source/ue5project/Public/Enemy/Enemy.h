@@ -9,6 +9,7 @@
 
 class UHealthBarComponent;
 class UPawnSensingComponent;
+class AAIController;
 
 UCLASS()
 class UE5PROJECT_API AEnemy : public ABaseCharacter
@@ -18,30 +19,50 @@ class UE5PROJECT_API AEnemy : public ABaseCharacter
 public:
 	AEnemy();
 
-	/* <AActor> */
+	// AActor
 	virtual void Tick(float DeltaTime) override;
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
 	virtual void Destroyed() override;
-	virtual void Attack() override;
-	/* <IHitInterface */
-	virtual void GetHit_Implementation(const FVector& ImpactPoint, AActor* Hitter) override;
 
-	FORCEINLINE double GetAttackRadius() const { return AttackRadius; }
+	// BaseCharacter
+	virtual void Attack() override;
+	
+	// HitInterface
+	virtual void GetHit_Implementation(const FVector& ImpactPoint, AActor* Hitter) override;
 
 protected:
 
+	// AActor
 	virtual void BeginPlay() override;
 
+	// BaseCharacter
 	virtual void Die_Implementation() override;
-	void SpawnSoul();
 	virtual bool CanAttack() override;
 	virtual void AttackEnd() override;
 	virtual void HandleDamage(float DamageAmount) override;
 
+	// Soul Spawn
+	void SpawnSoul();
+
+	// State
 	UPROPERTY(BlueprintReadOnly, VisibleAnywhere)
 	EEnemyState EnemyState = EEnemyState::EES_Patrolling;
 
 private:
+
+	// Subclass
+	UPROPERTY(EditAnywhere, Category = Combat)
+	TSubclassOf<class AWeapon> WeaponClass;
+
+	UPROPERTY(EditAnywhere, Category = Combat)
+	TSubclassOf<class ASoul> SoulClass;
+
+	// Components
+	UPROPERTY(VisibleAnywhere)
+	UHealthBarComponent* HealthBarWidget;
+
+	UPROPERTY(VisibleAnywhere)
+	UPawnSensingComponent* PawnSensing;
 
 	/* AI Behavior*/
 	void InitializeEnemy();
@@ -53,6 +74,11 @@ private:
 	void LoseInterest();
 	void StartPatrolling();
 	void ChaseTarget();
+	void ClearPatrolTimer();
+	void StartAttackTimer();
+	void ClearAttackTimer();
+	void MoveToTarget(AActor* Target);
+	void SpawnDefaultWeapon();
 	bool IsOutsideCombatRadius();
 	bool IsOutsideAttackRadius();
 	bool IsInsideAttackRadius();
@@ -60,25 +86,20 @@ private:
 	bool IsAttacking();
 	bool IsDead();
 	bool IsEngaged();
-	void ClearPatrolTimer();
-	void StartAttackTimer();
-	void ClearAttackTimer();
 	bool InTargetRange(AActor* Target, double Radius);
-	void MoveToTarget(AActor* Target);
 	AActor* ChoosePatrolTarget();
-	void SpawnDefaultWeapon();
 
 	UFUNCTION()
 	void PawnSeen(APawn* SeenPawn);
 
-	UPROPERTY(VisibleAnywhere)
-	UHealthBarComponent* HealthBarWidget;
+	UPROPERTY()
+	AAIController* EnemyController;
 
-	UPROPERTY(VisibleAnywhere)
-	UPawnSensingComponent* PawnSensing;
+	UPROPERTY(EditInstanceOnly, Category = "AI Navigation")
+	AActor* PatrolTarget;
 
-	UPROPERTY(EditAnywhere, Category = Combat)
-	TSubclassOf<class AWeapon> WeaponClass;
+	UPROPERTY(EditInstanceOnly, Category = "AI Navigation")
+	TArray<AActor*> PatrolTargets;
 
 	UPROPERTY(EditAnywhere, Category = Combat)
 	double CombatRadius = 1000.f;
@@ -89,19 +110,8 @@ private:
 	UPROPERTY(EditAnywhere, Category = Combat)
 	double AcceptanceRadius = 50.f;
 
-	UPROPERTY()
-	class AAIController* EnemyController;
-
-	UPROPERTY(EditInstanceOnly, Category = "AI Navigation")
-	AActor* PatrolTarget;
-
-	UPROPERTY(EditInstanceOnly, Category = "AI Navigation")
-	TArray<AActor*> PatrolTargets;
-
 	UPROPERTY(EditAnywhere)
 	double PatrolRadius = 200.f;
-
-	FTimerHandle PatrolTimer;
 
 	UPROPERTY(EditAnywhere, Category = "AI Navigation")
 	float PatrolWaitMin = 2.f;
@@ -111,8 +121,6 @@ private:
 
 	UPROPERTY(EditAnywhere, Category = Combat)
 	float PatrollingSpeed = 125.f;
-
-	FTimerHandle AttackTimer;
 
 	UPROPERTY(EditAnywhere, Category = Combat)
 	float AttackMin = 0.5f;
@@ -126,8 +134,11 @@ private:
 	UPROPERTY(EditAnywhere, Category = Combat)
 	float DeathLifeSpan = 8.f;
 
-	UPROPERTY(EditAnywhere, Category = Combat)
-	TSubclassOf<class ASoul> SoulClass;
+	FTimerHandle AttackTimer;
+	FTimerHandle PatrolTimer;
 
+public:
+	
+	FORCEINLINE double GetAttackRadius() const { return AttackRadius; }
 
 };

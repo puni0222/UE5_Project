@@ -22,6 +22,10 @@
 #include "..\..\Public\Characters\PlayerCharacter.h"
 #include "Net/UnrealNetwork.h"
 #include "Components/ItemInfoComponent.h"
+#include "DrawDebugHelpers.h"
+#include "UI/MyHUD.h"
+#include "Components/InventoryComponent.h"
+#include "Items/PickupItem.h"
 
 APlayerCharacter::APlayerCharacter()
 {
@@ -46,7 +50,7 @@ APlayerCharacter::APlayerCharacter()
 
 	ViewCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("ViewCamera"));
 	ViewCamera->SetupAttachment(CameraBoom);
-	
+
 	Hair = CreateDefaultSubobject<UGroomComponent>(TEXT("Hair"));
 	Hair->SetupAttachment(GetMesh());
 	Hair->AttachmentName = FString("head");
@@ -54,6 +58,33 @@ APlayerCharacter::APlayerCharacter()
 	Eyebrows = CreateDefaultSubobject<UGroomComponent>(TEXT("Eyebrows"));
 	Eyebrows->SetupAttachment(GetMesh());
 	Eyebrows->AttachmentName = FString("head");
+
+	InteractionCheckFrequency = 0.1f;
+	InteractionCheckDistance = 225.0f;
+	
+	PlayerInventory = CreateDefaultSubobject<UInventoryComponent>(TEXT("PlayerInventory"));
+	PlayerInventory->SetSlotsCapacity(20);
+	PlayerInventory->SetWeightCapacity(50.0f);
+	
+}
+
+void APlayerCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+
+	Tags.Add(FName("EngageableTarget"));
+
+	MyHUD = Cast<AMyHUD>(GetWorld()->GetFirstPlayerController()->GetHUD());
+	InitializeSlashOverlay();
+
+	APlayerController* PlayerController = Cast<APlayerController>(GetController());
+	if (PlayerController)
+	{
+		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
+		{
+			Subsystem->AddMappingContext(SlashContext, 0);
+		}
+	}
 }
 
 void APlayerCharacter::Tick(float DeltaTime)
@@ -63,7 +94,13 @@ void APlayerCharacter::Tick(float DeltaTime)
 		Attributes->RegenStamina(DeltaTime);
 		SlashOverlay->SetStaminaBarPercent(Attributes->GetStaminaPercent());
 	}
+
+	if (GetWorld()->TimeSince(InteractionData.LastInteractionCheckTime) > InteractionCheckFrequency)
+	{
+		PerformInteractionCheck();
+	}
 }
+
 void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
@@ -77,20 +114,16 @@ void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 		EnhancedInputComponent->BindAction(AttackAction, ETriggerEvent::Triggered, this, &APlayerCharacter::Attack);
 		EnhancedInputComponent->BindAction(DodgeAction, ETriggerEvent::Triggered, this, &APlayerCharacter::Dodge);
 		EnhancedInputComponent->BindAction(XKeyAction, ETriggerEvent::Triggered, this, &APlayerCharacter::XKeyPressed);
-		EnhancedInputComponent->BindAction(IKeyAction, ETriggerEvent::Triggered, this, &APlayerCharacter::IKeyPressed);
+		EnhancedInputComponent->BindAction(IKeyAction, ETriggerEvent::Completed, this, &APlayerCharacter::IKeyPressed);
 		EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Triggered, this, &APlayerCharacter::Interact);
+		EnhancedInputComponent->BindAction(BeginInteractAction, ETriggerEvent::Started, this, &APlayerCharacter::BeginInteract);
+		EnhancedInputComponent->BindAction(EndInteractAction, ETriggerEvent::Canceled, this, &APlayerCharacter::EndInteract);
 	}
 
 }
 
-void APlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
-{
-	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	DOREPLIFETIME_CONDITION(APlayerCharacter, InventoryItems, COND_OwnerOnly);
-	
-}
-
-float APlayerCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
+float APlayerCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, 
+	                               AController* EventInstigator, AActor* DamageCauser)
 {
 	HandleDamage(DamageAmount);
 	SetHUDHealth();
@@ -130,7 +163,6 @@ void APlayerCharacter::AddSouls(ASoul* Soul)
 	}
 }
 
-
 void APlayerCharacter::AddGold(ATreasure* Treasure)
 {
 	if (Attributes && SlashOverlay)
@@ -150,78 +182,14 @@ void APlayerCharacter::AddHealth(AHealthItem* HealthItem)
 	}
 }
  
-void APlayerCharacter::OnRep_InventoryItems()
-{
-	if (InventoryItems.Num())
-	{
-		AddItemAndUpdateInventoryWidget(InventoryItems[InventoryItems.Num() - 1], InventoryItems);
-	}
-	else
-	{
-		AddItemAndUpdateInventoryWidget(FItemInfoStruct(), InventoryItems);
-	}
-}
-
-void APlayerCharacter::OnRep_Stats()
-{
-}
-
-void APlayerCharacter::AddInventoryItem(FItemInfoStruct ItemData)
-{
-	if (HasAuthority())
-	{
-		bool bIsNewItem = true;
-		for (FItemInfoStruct& Item : InventoryItems)
-		{
-			if (Item.ItemClass == ItemData.ItemClass)
-			{
-				++Item.CurrentStack;
-				bIsNewItem = false;
-				break;
-			}
-		}
-		
-		if (bIsNewItem)
-		{
-			InventoryItems.Add(ItemData);
-		}
-
-		if (IsLocallyControlled())
-		{
-			OnRep_InventoryItems();
-		}
-	}
-}
-
-void APlayerCharacter::BeginPlay()
-{
-	Super::BeginPlay();
-	
-	Tags.Add(FName("EngageableTarget"));
-
-	InitializeSlashOverlay();
-
-	APlayerController* PlayerController = Cast<APlayerController>(GetController());
-	if (PlayerController)
-	{
-		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
-		{
-			Subsystem->AddMappingContext(SlashContext, 0);
-		}
-	}
-}
-
-
-
 void APlayerCharacter::InitializeSlashOverlay()
 {
 	APlayerController* PlayerController = Cast<APlayerController>(GetController());
 	if (PlayerController)
 	{
-		ASlashHUD* SlashHUD = Cast<ASlashHUD>(PlayerController->GetHUD());
-		if (SlashHUD)
+		if (MyHUD)
 		{
-			SlashOverlay = SlashHUD->GetSlashOverlay();
+			SlashOverlay = MyHUD->GetSlashOverlay();
 			if (SlashOverlay && Attributes)
 			{
 				SlashOverlay->SetHealthBarPercent(Attributes->GetHealthPercent());
@@ -232,50 +200,163 @@ void APlayerCharacter::InitializeSlashOverlay()
 		}
 	}
 }
-
-
-
-void APlayerCharacter::Interact()
+ 
+void APlayerCharacter::PerformInteractionCheck()
 {
-	FVector Start = ViewCamera->GetComponentLocation();
-	FVector End = Start + ViewCamera->GetForwardVector() * 500.0f;
-	if (HasAuthority())
+	InteractionData.LastInteractionCheckTime = GetWorld()->GetTimeSeconds();
+
+	FVector TraceStart = GetPawnViewLocation();
+	FVector TraceEnd = TraceStart + (GetViewRotation().Vector() * InteractionCheckDistance);
+	
+	//float LookDirection = FVector::DotProduct(GetActorForwardVector(), GetViewRotation().Vector());
+	//if (LookDirection > 0)
+
+	FCollisionQueryParams QueryParams;
+	QueryParams.AddIgnoredActor(this);
+
+	FHitResult TraceHit;
+
+	//DrawDebugLine(GetWorld(), TraceStart, TraceEnd, FColor::Red, false, 1.0f, 0, 2.0f);
+
+	if (GetWorld()->LineTraceSingleByChannel(TraceHit, TraceStart, TraceEnd, ECC_Visibility, QueryParams))
 	{
-		Interact(Start, End);
+		if (TraceHit.GetActor()->GetClass()->ImplementsInterface(UInteractableInterface::StaticClass()))
+		{
+			if (TraceHit.GetActor() != InteractionData.CurrentInteractable)
+			{
+				FoundInteractable(TraceHit.GetActor());
+				return;
+			}
+
+			if (TraceHit.GetActor() == InteractionData.CurrentInteractable)
+			{
+				return;
+			}
+		}
 	}
-	else
+
+
+	NoInteractableFound();
+}
+
+void APlayerCharacter::FoundInteractable(AActor* NewInteractable)
+{
+	if (IsInteracting())
 	{
-		Server_Interact(Start, End);
+		EndInteract();
+	}
+
+	if (InteractionData.CurrentInteractable)
+	{
+		TargetInteractable = InteractionData.CurrentInteractable;
+		TargetInteractable->EndFocus();
+	}
+
+	InteractionData.CurrentInteractable = NewInteractable;
+	TargetInteractable = NewInteractable;
+
+	MyHUD->UpdateInteractionWidget(&TargetInteractable->InteractableData);
+
+	TargetInteractable->BeginFocus();
+}
+
+void APlayerCharacter::NoInteractableFound()
+{
+	if (IsInteracting())
+	{
+		GetWorldTimerManager().ClearTimer(TimerHandle_Interaction);
+	}
+	
+	if (InteractionData.CurrentInteractable)
+	{
+		if (TargetInteractable.GetObject())
+		{
+			TargetInteractable->EndFocus();
+		}
+		
+		MyHUD->HideInteractionWidget();
+
+		InteractionData.CurrentInteractable = nullptr;
+		TargetInteractable = nullptr;
 	}
 }
 
-
-void APlayerCharacter::Interact(FVector Start, FVector End)
+void APlayerCharacter::BeginInteract()
 {
-	FHitResult HitResult;
-	FCollisionQueryParams Params;
-	Params.AddIgnoredActor(this);
-
-	if (GetWorld()->LineTraceSingleByChannel(HitResult, Start, End, ECC_Visibility, Params))
+	PerformInteractionCheck();
+	
+	if (InteractionData.CurrentInteractable)
 	{
-		if (IInteractableInterface* Interface = Cast<IInteractableInterface>(HitResult.GetActor()))
+		if (TargetInteractable.GetObject())
 		{
-			Interface->Interact(this);
+			TargetInteractable->BeginInteract();
+			if (FMath::IsNearlyZero(TargetInteractable->InteractableData.InteractionDuration, 0.1f))
+			{
+				Interact();
+			}
+			else
+			{
+				GetWorldTimerManager().SetTimer(
+					TimerHandle_Interaction, 
+					this, 
+					&APlayerCharacter::Interact,
+					TargetInteractable->InteractableData.InteractionDuration,
+					false);
+			}
 		}
 	}
 }
 
-bool APlayerCharacter::Server_Interact_Validate(FVector Start, FVector End)
+void APlayerCharacter::EndInteract()
 {
-	return true;
+	GetWorldTimerManager().ClearTimer(TimerHandle_Interaction);
+
+	if (TargetInteractable.GetObject())
+	{
+		TargetInteractable->EndInteract();
+	}
 }
 
-void APlayerCharacter::Server_Interact_Implementation(FVector Start, FVector End)
+void APlayerCharacter::Interact()
 {
-	Interact(Start, End);
+	GetWorldTimerManager().ClearTimer(TimerHandle_Interaction);
+	
+	if (TargetInteractable.GetObject())
+	{
+		TargetInteractable->Interact(this);
+	}
 }
 
+void APlayerCharacter::UpdateInteractionWidget() const
+{
+	if (TargetInteractable.GetObject())
+	{
+		MyHUD->UpdateInteractionWidget(&TargetInteractable->InteractableData);
+	}
+}
 
+void APlayerCharacter::DropItem(AItem* ItemToDrop, const int32 QuantityToDrop)
+{
+	if (PlayerInventory->FindMatchingItem(ItemToDrop))
+	{
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.Owner = this;
+		SpawnParams.bNoFail = true;
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+		const FVector SpawnLocation = GetActorLocation() + (GetActorForwardVector() * 50.f);
+		const FTransform SpawnTransform(GetActorRotation(), SpawnLocation);
+
+		const int32 RemovedQuantity = PlayerInventory->RemoveAmountOfItem(ItemToDrop, QuantityToDrop);
+
+		APickupItem* Pickup = GetWorld()->SpawnActor<APickupItem>(APickupItem::StaticClass(), SpawnTransform, SpawnParams);
+		
+		Pickup->InitializeDrop(ItemToDrop, RemovedQuantity);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Item to drop was null"));
+	}
+}
 
 void APlayerCharacter::Move(const FInputActionValue& Value)
 {
@@ -321,6 +402,12 @@ void APlayerCharacter::XKeyPressed()
 
 void APlayerCharacter::IKeyPressed()
 {
+	ToggleMenu();
+}
+
+void APlayerCharacter::ToggleMenu()
+{
+	MyHUD->ToggleMenu();
 }
 
 void APlayerCharacter::EKeyPressed()
@@ -384,6 +471,7 @@ void APlayerCharacter::Die_Implementation()
 	ActionState = EActionState::EAS_Dead;
 	DisableMeshCollision();
 }
+
 void APlayerCharacter::AttachWeaponToBack()
 {
 	if (EquippedWeapon)
@@ -408,33 +496,6 @@ void APlayerCharacter::FinishEquipping()
 void APlayerCharacter::HitReactEnd()
 {
 	ActionState = EActionState::EAS_Unoccupied;
-}
-
-void APlayerCharacter::UseItem(TSubclassOf<AItem> ItemSubclass)
-{
-	if (ItemSubclass)
-	{
-		if (AItem* Item = ItemSubclass.GetDefaultObject())
-		{
-			Item->Use(this);
-		}
-
-		uint8 Index = 0;
-		for (FItemInfoStruct& Item : InventoryItems)
-		{
-			if (Item.ItemClass == ItemSubclass)
-			{
-				--Item.CurrentStack;
-				if (Item.CurrentStack <= 0)
-				{
-					InventoryItems.RemoveAt(Index);
-				}
-				break;
-			}
-			++Index;
-		}
-		OnRep_InventoryItems();
-	}
 }
 
 void APlayerCharacter::Dodge()

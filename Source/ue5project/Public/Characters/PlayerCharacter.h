@@ -7,6 +7,7 @@
 #include "InputActionValue.h"
 #include "CharacterTypes.h"
 #include "Interfaces/PickupInterface.h"
+#include "Interfaces/InteractableInterface.h"
 #include "PlayerCharacter.generated.h"
 
 class UInputMappingContext;
@@ -21,7 +22,23 @@ class ATreasure;
 class AHealthItem;
 class UGroomComponent;
 struct FItemInfoStruct;
+class AMyHUD;
+class UInventoryComponent;
 
+
+USTRUCT()
+struct FInteractionData
+{
+	GENERATED_USTRUCT_BODY()
+	
+	FInteractionData() : CurrentInteractable(nullptr), LastInteractionCheckTime(0.0f) {};
+
+	UPROPERTY()
+	AActor* CurrentInteractable;
+
+	UPROPERTY()
+	float LastInteractionCheckTime;
+};
 
 UCLASS()
 class UE5PROJECT_API APlayerCharacter : public ABaseCharacter , public IPickupInterface
@@ -31,23 +48,56 @@ class UE5PROJECT_API APlayerCharacter : public ABaseCharacter , public IPickupIn
 public:
 
 	APlayerCharacter();
+
+	// AActor
 	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
+	
+	// HitInterface
 	virtual void GetHit_Implementation(const FVector& ImpactPoint, AActor* Hitter) override;
+
+	// PickupInterface
 	virtual void SetOverlappingItem(class AItem* Item) override;
 	virtual void AddSouls(ASoul* Soul) override;
 	virtual void AddGold(ATreasure* Treasure) override;
 	virtual void AddHealth(AHealthItem* HealthItem) override;
 
-	void AddInventoryItem(FItemInfoStruct ItemData);
+	// Inventory
+	void UpdateInteractionWidget() const;
+	void DropItem(AItem* ItemToDrop, const int32 QuantityToDrop);
 
 protected:
 	virtual void BeginPlay() override;
-	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
+	// Components
+	UPROPERTY(VisibleAnywhere, Category = "Character | Inventory")
+	UInventoryComponent* PlayerInventory;
 
+	// UI
+	UPROPERTY()
+	AMyHUD* MyHUD;
 
+	// Interaction
+	UPROPERTY(VisibleAnywhere, Category = "Character | Interaction")
+	TScriptInterface<IInteractableInterface> TargetInteractable;
+
+	float InteractionCheckFrequency;
+
+	float InteractionCheckDistance;
+	
+	FTimerHandle TimerHandle_Interaction;
+
+	FInteractionData InteractionData;
+
+	void PerformInteractionCheck();
+	void FoundInteractable(AActor* NewInteractable);
+	void NoInteractableFound();
+	void BeginInteract();
+	void EndInteract();
+	void Interact();
+
+	// Input
 	UPROPERTY(EditAnywhere, Category = InputAction)
 	UInputMappingContext* SlashContext;
 	
@@ -78,50 +128,36 @@ protected:
 	UPROPERTY(EditAnywhere, Category = InputAction)
 	UInputAction* IKeyAction;
 
-	UPROPERTY(ReplicatedUsing = OnRep_InventoryItems, BlueprintReadWrite, Category = "Inventory")
-	TArray<FItemInfoStruct> InventoryItems;
+	UPROPERTY(EditAnywhere, Category = InputAction)
+	UInputAction* BeginInteractAction;
+
+	UPROPERTY(EditAnywhere, Category = InputAction)
+	UInputAction* EndInteractAction;
 	
-	UFUNCTION()
-	void OnRep_InventoryItems();
-
-	UFUNCTION()
-	void OnRep_Stats();
-
-	UFUNCTION(BlueprintImplementableEvent, Category = "Inventory")
-	void AddItemAndUpdateInventoryWidget(FItemInfoStruct ItemData, const TArray<FItemInfoStruct>& CurrentInventory = TArray<FItemInfoStruct>());
-
-	UFUNCTION(BlueprintImplementableEvent, Category = "Inventory")
-	void UpdateInventoryWidget(const TArray<FItemInfoStruct>& NewInventoryItems);
-
-	UFUNCTION(Server, Reliable, WithValidation)
-	void Server_Interact(FVector Start, FVector End);
-
-	/* input */
-
+	// Input Action
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
 	void EKeyPressed();
 	void Dodge();
 	void XKeyPressed();
 	void IKeyPressed();
+	void ToggleMenu();
 	virtual void Attack() override;
 	virtual void Jump() override;
-	void Interact();
-	void Interact(FVector Start, FVector End);
 
-	/* Combat */
-	void EquipWeapon(AWeapon* Weapon);
+	// Combat
+	virtual void Die_Implementation() override;
 	virtual void AttackEnd() override;
 	virtual void DodgeEnd() override;
 	virtual bool CanAttack() override;
-	bool CanDisarm();
-	bool CanArm();
+	void EquipWeapon(AWeapon* Weapon);
 	void Disarm();
 	void Arm();
 	void PlayEquipMontage(const FName& SectionName);
 	bool HasEnoughStamina();
 	bool IsOccupied();
-	virtual void Die_Implementation() override;
+	bool CanDisarm();
+	bool CanArm();
 
 	UFUNCTION(BlueprintCallable)
 	void AttachWeaponToBack();
@@ -135,16 +171,29 @@ protected:
 	UFUNCTION(BlueprintCallable)
 	void HitReactEnd();
 
-	UFUNCTION(BlueprintCallable, Category = "Inventory")
-	void UseItem(TSubclassOf<AItem> ItemSubclass);
-
 private:
 	
+	// UI
+	UPROPERTY()
+	USlashOverlay* SlashOverlay;
+
 	void InitializeSlashOverlay();
 	void SetHUDHealth();
 
-	/* Character Components */
+	// Equip
+	UPROPERTY(VisibleInstanceOnly)
+	AItem* OverlappingItem;
 
+	UPROPERTY(EditDefaultsOnly, Category = Montages)
+	UAnimMontage* EquipMontage;
+
+	// State
+	ECharacterState CharacterState = ECharacterState::ECS_Unequipped;
+
+	UPROPERTY(BlueprintReadWrite, meta = (AllowPrivateAccess = "true"))
+	EActionState ActionState = EActionState::EAS_Unoccupied;
+
+	// Components
 	UPROPERTY(VisibleAnywhere)
 	USpringArmComponent* CameraBoom;
 
@@ -157,22 +206,10 @@ private:
 	UPROPERTY(VisibleAnywhere, Category = Hair)
 	UGroomComponent* Eyebrows;
 
-	UPROPERTY(VisibleInstanceOnly)
-	AItem* OverlappingItem;
-
-	UPROPERTY(EditDefaultsOnly, Category = Montages)
-	UAnimMontage* EquipMontage;
-
-	ECharacterState CharacterState = ECharacterState::ECS_Unequipped;
-
-	UPROPERTY(BlueprintReadWrite, meta = (AllowPrivateAccess = "true"))
-	EActionState ActionState = EActionState::EAS_Unoccupied;
-
-	UPROPERTY()
-	USlashOverlay* SlashOverlay;
-
 public:
 	
 	FORCEINLINE ECharacterState GetCharacterState() const { return CharacterState; }
 	FORCEINLINE EActionState GetActionState() const { return ActionState; }
+	FORCEINLINE bool IsInteracting() const { return GetWorldTimerManager().IsTimerActive(TimerHandle_Interaction); };
+	FORCEINLINE UInventoryComponent* GetInventory() const { return PlayerInventory; };
 };
